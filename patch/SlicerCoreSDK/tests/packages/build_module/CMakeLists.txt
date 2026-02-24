@@ -4,12 +4,7 @@ project(${SKBUILD_PROJECT_NAME} VERSION ${SKBUILD_PROJECT_VERSION})
 
 find_package(Slicer CONFIG REQUIRED)
 
-include(FetchContent)
-FetchContent_Declare(vtk-sdk-python-helper
-  GIT_REPOSITORY https://github.com/Kitware/vtk-sdk-python-wheel-helper.git
-  GIT_TAG        main
-)
-FetchContent_MakeAvailable(vtk-sdk-python-helper)
+include(VTKSDKPythonWheelHelper)
 
 # Install runtime only dependencies
 vtksdk_build_modules(${SKBUILD_PROJECT_NAME}

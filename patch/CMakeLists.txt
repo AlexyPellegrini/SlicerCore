@@ -7,11 +7,12 @@ option(BUILD_SDK "If ON, build SlicerCore-SDK instead of SlicerCore runtime" OFF
 option(USE_SUPERBUILD "Build dependencies using Slicer superbuild" ON)
 option(USE_SYSTEM_LINKER "Slicer core uses mold or lld on Linux when available, if ON this will fallback to system linker" OFF)
 
-list(PREPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/CMake")
-include(SlicerCoreBuildConfiguration) # do some special configurations
+list(APPEND CMAKE_MODULE_PATH
+  "${CMAKE_CURRENT_SOURCE_DIR}/SlicerCore/CMake"
+  "${CMAKE_CURRENT_SOURCE_DIR}/CMake"
+)
 include(SlicerCoreModuleWrapper)
 
-# Superbuild
 if(USE_SUPERBUILD)
   include(SlicerCoreSuperbuild)
   return()
@@ -90,7 +91,7 @@ if(BUILD_SDK)
     PREFIX_PATHS
       "slicer_core_sdk/content/third_party"
     CMAKE_MODULES_INCLUDED
-      "${CMAKE_CURRENT_SOURCE_DIR}/CMake/SlicerCoreModuleWrapper.cmake"
+      "${CMAKE_CURRENT_SOURCE_DIR}/SlicerCore/CMake/SlicerCoreModuleWrapper.cmake"
   )
 
   # Install dependencies required to consume SlicerCore as a SDK
@@ -99,14 +100,6 @@ if(BUILD_SDK)
     DESTINATION slicer_core_sdk/content/third_party
     USE_SOURCE_PERMISSIONS
   )
-
-  if(UNIX)
-    # DCMTK do not use the right prefix for CMake scripts, this is a simple passthrough to make CMake happy
-    install(
-      DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/SlicerCoreSDK/third_party_patches/cmake/DCMTK/
-      DESTINATION slicer_core_sdk/content/third_party/lib/cmake/DCMTK
-    )
-  endif()
 else()
   vtksdk_generate_package_init(${SKBUILD_PROJECT_NAME} MODULES ${modules})
   vtksdk_install_runtimes_deps(${SKBUILD_PROJECT_NAME} MODULES ${modules})

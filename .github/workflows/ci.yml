@@ -26,6 +26,7 @@ jobs:
           - os: macos-15
             platform-tag: macosx_arm64
             wheel-tag: macosx_11_0_arm64
+            macosx-deployment-target: "11.0"
     uses: ./.github/workflows/build-wheels.yml
     with:
       # Map the matrix variables to the reusable workflow's inputs

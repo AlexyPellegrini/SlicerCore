@@ -24,6 +24,10 @@ on:
         description: 'Wheel tag to apply after building. Ignored on Windows.'
         required: true
         type: string
+      macosx-deployment-target:
+        description: 'Used to set the MACOSX_DEPLOYMENT_TARGET env variable. Only used on Mac.'
+        required: false
+        type: string
       use-cache:
         required: false
         type: boolean
@@ -35,6 +39,7 @@ jobs:
     runs-on: ${{ inputs.os }}
     
     env:
+      MACOSX_DEPLOYMENT_TARGET: ${{ inputs.macosx-deployment-target }}
       CIBW_BUILD: ${{ inputs.build-target }}
       # cibuildwheel creates a docker container for building our wheel
       # This is all the required steps to use host ccache correctly
@@ -42,7 +47,6 @@ jobs:
       # Install a compiler cache on each platform
       CIBW_BEFORE_ALL_LINUX: "yum install -y ccache && ccache --show-config && ccache -z"
       CIBW_BEFORE_ALL_MACOS: "brew install ccache && ccache --show-config && ccache -z"
-      CIBW_BEFORE_ALL_WINDOWS: "winget install ccache --accept-source-agreements --disable-interactivity && ccache --show-config && ccache -z"
       # Use no build isolation so ccache can hit correctly since vtk-sdk will always be in the same logical directory
       CIBW_BUILD_FRONTEND: "pip; args: --no-build-isolation"
       # And as we use --no-build-isolation, let's install the dependencies manually
@@ -63,32 +67,18 @@ jobs:
         cp $(dirname {wheel})/slicer_core*.whl {dest_dir}"
 
     steps:
-    - uses: actions/checkout@v4
-
-    - name: Set up Python ${{ inputs.python-version }}
-      uses: actions/setup-python@v5
-      with:
-        python-version: ${{ inputs.python-version }}
-        cache: 'pip'
-        cache-dependency-path: 'pyproject.toml'
-
-    - name: Apply patch
-      run: python apply_patch.py && python set_vtk_version.py ${{ inputs.vtk-tag }}
-
+    # Install and setup ccache on host container
     - name: Install ccache (Linux)
       if: runner.os == 'Linux' && inputs.use-cache
       run: sudo apt-get update && sudo apt-get install -y ccache
-
-    - name: Install ccache (macOS)
-      if: runner.os == 'macOS' && inputs.use-cache
-      run: brew install -y ccache
-
-    - name: Install ccache (Windows)
-      if: runner.os == 'Windows' && inputs.use-cache
-      run: winget install ccache --accept-source-agreements --disable-interactivity
+    #- name: Install ccache (macOS)
+    #  if: runner.os == 'macOS' && inputs.use-cache
+    #  run: brew install ccache
+    #- name: Install ccache (Windows)
+    #  if: runner.os == 'Windows' && inputs.use-cache
+    #  run: winget install ccache --accept-source-agreements --disable-interactivity
 
     - name: Restore ccache
-      # Only run if use-cache input is true
       if: inputs.use-cache
       uses: actions/cache/restore@v4
       with:
@@ -105,6 +95,19 @@ jobs:
           CCACHE_CONFIGPATH=/host/.config/ccache/ccache.conf \
           CMAKE_C_COMPILER_LAUNCHER=ccache \
           CMAKE_CXX_COMPILER_LAUNCHER=ccache" >> $GITHUB_ENV
+
+    # Build and test wheels
+    - uses: actions/checkout@v4
+
+    - name: Set up Python ${{ inputs.python-version }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python-version }}
+        cache: 'pip'
+        cache-dependency-path: 'pyproject.toml'
+
+    - name: Apply patch
+      run: python apply_patch.py && python set_vtk_version.py ${{ inputs.vtk-tag }}
 
     - name: Build wheel
       uses: pypa/cibuildwheel@v3.3.1

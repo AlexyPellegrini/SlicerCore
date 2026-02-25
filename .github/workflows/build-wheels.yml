@@ -40,29 +40,27 @@ jobs:
       # This is all the required steps to use host ccache correctly
       CIBW_CONTAINER_ENGINE: "docker; create_args: --volume /home/runner/.cache/ccache:/host/.cache/ccache --volume /home/runner/.config/ccache:/host/.config/ccache"
       # Install a compiler cache on each platform
-      CIBW_BEFORE_ALL_LINUX: yum install -y ccache && ccache --show-config && ccache -z
-      CIBW_BEFORE_ALL_MACOS: brew install ccache && ccache --show-config && ccache -z
-      CIBW_BEFORE_ALL_WINDOWS: winget install ccache && ccache --show-config && ccache -z
+      CIBW_BEFORE_ALL_LINUX: "yum install -y ccache && ccache --show-config && ccache -z"
+      CIBW_BEFORE_ALL_MACOS: "brew install ccache && ccache --show-config && ccache -z"
+      CIBW_BEFORE_ALL_WINDOWS: "winget install ccache --accept-source-agreements --disable-interactivity && ccache --show-config && ccache -z"
+      # Use no build isolation so ccache can hit correctly since vtk-sdk will always be in the same logical directory
       CIBW_BUILD_FRONTEND: "pip; args: --no-build-isolation"
-      CIBW_BEFORE_BUILD: pip install
-        --extra-index-url https://wheels.vtk.org
-        --extra-index-url https://vtk.org/files/wheel-sdks
-        scikit-build-core
-        vtk-sdk-python-wheel-helper
+      # And as we use --no-build-isolation, let's install the dependencies manually
+      CIBW_BEFORE_BUILD: "pip install scikit-build-core vtk-sdk-python-wheel-helper
         vtk-sdk==${{ inputs.vtk-tag }}
+        --extra-index-url https://vtk.org/files/wheel-sdks
         vtk==${{ inputs.vtk-tag }}
-        
-        python set_vtk_version ${{ inputs.vtk-tag }}
+        --extra-index-url https://wheels.vtk.org"
       # Do not repair, everything is already put just as needed to make it work
       # SlicerCore uses extensive CMake logic to package everything as needed, do not try this at home!
-      CIBW_REPAIR_WHEEL_COMMAND_LINUX: >
+      CIBW_REPAIR_WHEEL_COMMAND_LINUX: "
         python -m pip install wheel &&
         python -m wheel tags --platform-tag ${{ inputs.wheel-tag }} --remove {wheel} &&
-        cp $(dirname {wheel})/slicer_core*.whl {dest_dir}
-      CIBW_REPAIR_WHEEL_COMMAND_MACOS: >
+        cp $(dirname {wheel})/slicer_core*.whl {dest_dir}"
+      CIBW_REPAIR_WHEEL_COMMAND_MACOS: "
         python -m pip install wheel &&
         python -m wheel tags --platform-tag ${{ inputs.wheel-tag }} --remove {wheel} &&
-        cp $(dirname {wheel})/slicer_core*.whl {dest_dir}
+        cp $(dirname {wheel})/slicer_core*.whl {dest_dir}"
 
     steps:
     - uses: actions/checkout@v4
@@ -75,7 +73,7 @@ jobs:
         cache-dependency-path: 'pyproject.toml'
 
     - name: Apply patch
-      run: python apply_patch.py
+      run: python apply_patch.py && python set_vtk_version.py ${{ inputs.vtk-tag }}
 
     - name: Install ccache (Linux)
       if: runner.os == 'Linux' && inputs.use-cache
@@ -83,11 +81,11 @@ jobs:
 
     - name: Install ccache (macOS)
       if: runner.os == 'macOS' && inputs.use-cache
-      run: brew install ccache
+      run: brew install -y ccache
 
     - name: Install ccache (Windows)
       if: runner.os == 'Windows' && inputs.use-cache
-      run: winget install ccache
+      run: winget install ccache --accept-source-agreements --disable-interactivity
 
     - name: Restore ccache
       # Only run if use-cache input is true

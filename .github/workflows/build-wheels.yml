@@ -27,12 +27,13 @@ on:
       macosx-deployment-target:
         description: 'Used to set the MACOSX_DEPLOYMENT_TARGET env variable. Only used on Mac.'
         required: false
+        default: "11.0"
         type: string
       use-cache:
-        required: false
+        description: 'Enable or disable ccache restoration and saving'
         type: boolean
         default: true
-        description: 'Enable or disable ccache restoration and saving'
+        required: false
 
 jobs:
   test:
@@ -43,10 +44,12 @@ jobs:
       CIBW_BUILD: ${{ inputs.build-target }}
       # cibuildwheel creates a docker container for building our wheel
       # This is all the required steps to use host ccache correctly
+      # Note that this is only needed on linux, as Mac and Windows do not use docker containers
       CIBW_CONTAINER_ENGINE: "docker; create_args: --volume /home/runner/.cache/ccache:/host/.cache/ccache --volume /home/runner/.config/ccache:/host/.config/ccache"
       # Install a compiler cache on each platform
       CIBW_BEFORE_ALL_LINUX: "yum install -y ccache && ccache --show-config && ccache -z"
-      CIBW_BEFORE_ALL_MACOS: "brew install ccache && ccache --show-config && ccache -z"
+      CIBW_BEFORE_ALL_MACOS: "ccache --show-config && ccache -z"
+      CIBW_BEFORE_ALL_WINDOWS: "ccache --show-config && ccache -z"
       # Use no build isolation so ccache can hit correctly since vtk-sdk will always be in the same logical directory
       CIBW_BUILD_FRONTEND: "pip; args: --no-build-isolation"
       # And as we use --no-build-isolation, let's install the dependencies manually
@@ -67,34 +70,39 @@ jobs:
         cp $(dirname {wheel})/slicer_core*.whl {dest_dir}"
 
     steps:
-    # Install and setup ccache on host container
+    # Install and setup ccache on host
     - name: Install ccache (Linux)
       if: runner.os == 'Linux' && inputs.use-cache
       run: sudo apt-get update && sudo apt-get install -y ccache
-    #- name: Install ccache (macOS)
-    #  if: runner.os == 'macOS' && inputs.use-cache
-    #  run: brew install ccache
-    #- name: Install ccache (Windows)
-    #  if: runner.os == 'Windows' && inputs.use-cache
-    #  run: winget install ccache --accept-source-agreements --disable-interactivity
+    - name: Install ccache (macOS)
+      if: runner.os == 'macOS' && inputs.use-cache
+      run: brew install ccache
 
     - name: Restore ccache
       if: inputs.use-cache
       uses: actions/cache/restore@v4
       with:
-        path: ~/.cache/ccache
+        path: |
+          ~/.cache/ccache
+          ~/Library/Caches/ccache
+          C:\Users\runneradmin\AppData\Local\ccache
         key: ccache-${{ inputs.os }}-${{ github.run_id }}
         restore-keys: |
           ccache-${{ inputs.os }}-
 
     - name: ccache config
-      if: inputs.use-cache
+      if: runner.os != 'Linux' && inputs.use-cache
       run: |
         ccache --set-config=max_size=256Mi && ccache --set-config=compression=true
-        echo "CIBW_ENVIRONMENT=CCACHE_DIR=/host/.cache/ccache \
-          CCACHE_CONFIGPATH=/host/.config/ccache/ccache.conf \
-          CMAKE_C_COMPILER_LAUNCHER=ccache \
-          CMAKE_CXX_COMPILER_LAUNCHER=ccache" >> $GITHUB_ENV
+        echo "CMAKE_C_COMPILER_LAUNCHER=ccache" >> $GITHUB_ENV
+        echo "CMAKE_CXX_COMPILER_LAUNCHER=ccache" >> $GITHUB_ENV
+
+    - name: ccache config (Linux)
+      if: runner.os == 'Linux' && inputs.use-cache
+      run: echo "CIBW_ENVIRONMENT=CCACHE_DIR=/host/.cache/ccache \
+        CCACHE_CONFIGPATH=/host/.config/ccache/ccache.conf \
+        CMAKE_C_COMPILER_LAUNCHER=ccache \
+        CMAKE_CXX_COMPILER_LAUNCHER=ccache" >> $GITHUB_ENV
 
     # Build and test wheels
     - uses: actions/checkout@v4
@@ -141,9 +149,12 @@ jobs:
         name: slicer-core-sdk-${{ inputs.python-version }}-${{ inputs.build-target }}
         path: wheelhouse/slicer_core_sdk-*.whl
 
+    - name: Setup tests (Linux)
+      if: runner.os == 'Linux'
+      run: sudo apt-get install mesa-common-dev mesa-utils freeglut3-dev
+
     - name: Test
       run: |
-        sudo apt-get install mesa-common-dev mesa-utils freeglut3-dev
         python -m pip install virtualenv pytest
         python -m pytest --local-wheels=wheelhouse --verbose Slicer/SlicerCoreSDK
 
@@ -154,5 +165,8 @@ jobs:
       # We want the cache to be updated regardless of success, but ONLY if caching is enabled
       if: ${{ always() && inputs.use-cache }}
       with:
-        path: ~/.cache/ccache
+        path: |
+          ~/.cache/ccache
+          ~/Library/Caches/ccache
+          C:\Users\runneradmin\AppData\Local\ccache
         key: ccache-${{ inputs.os }}-${{ github.run_id }}

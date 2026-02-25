@@ -9,7 +9,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-15]
+        os: [windows-latest, macos-15]
         vtk-tag: ['9.6.0'] # pyproject enforces this specific version
         python-version: ['3.10']
         include:
@@ -17,9 +17,9 @@ jobs:
           - python-version: '3.10'
             cp-tag: 'cp310'
           # OS name to ciwheelbuild platform name
-          - os: ubuntu-latest
-            platform-tag: manylinux_x86_64
-            wheel-tag: manylinux_2_28_x86_64
+          #- os: ubuntu-latest
+          #  platform-tag: manylinux_x86_64
+          #  wheel-tag: manylinux_2_28_x86_64
           - os: windows-latest
             platform-tag: win_amd64
             wheel-tag: win_amd64

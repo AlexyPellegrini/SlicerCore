@@ -1,6 +1,6 @@
 # Baseline Slicer repository, change this when rebasing
-GIT_URL = "https://github.com/AlexyPellegrini/Slicer.git"
-GIT_REVISION = "2d798bde687300cbd0bb9f124aa24002fcb73baa"
+GIT_URL = "https://github.com/Slicer/Slicer.git"
+GIT_REVISION = "55f38b57fc9d9a80da0fce51aa12d82064c101cc"
 
 # Directories used by the scripts
 SLICER_DIR = "Slicer"

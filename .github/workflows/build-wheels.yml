@@ -71,12 +71,30 @@ jobs:
 
     steps:
     # Install and setup ccache on host
-    - name: Install ccache (Linux)
-      if: runner.os == 'Linux' && inputs.use-cache
-      run: sudo apt-get update && sudo apt-get install -y ccache
-    - name: Install ccache (macOS)
+    - name: ccache config (Windows)
+      if: runner.os == 'Windows' && inputs.use-cache
+      run: |
+        ccache --set-config=max_size=1Gi && ccache --set-config=compression=true
+        "CMAKE_C_COMPILER_LAUNCHER=ccache" | Out-File -FilePath $env:GITHUB_ENV -Append
+        "CMAKE_CXX_COMPILER_LAUNCHER=ccache" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+    - name: ccache config (Mac)
       if: runner.os == 'macOS' && inputs.use-cache
-      run: brew install ccache
+      run: |
+        brew install ccache
+        ccache --set-config=max_size=1Gi && ccache --set-config=compression=true
+        echo "CMAKE_C_COMPILER_LAUNCHER=ccache" >> $GITHUB_ENV
+        echo "CMAKE_CXX_COMPILER_LAUNCHER=ccache" >> $GITHUB_ENV
+
+    - name: ccache config (Linux)
+      if: runner.os == 'Linux' && inputs.use-cache
+      run: |
+        sudo apt-get update && sudo apt-get install -y ccache
+        ccache --set-config=max_size=1Gi && ccache --set-config=compression=true
+        echo "CIBW_ENVIRONMENT=CCACHE_DIR=/host/.cache/ccache \
+        CCACHE_CONFIGPATH=/host/.config/ccache/ccache.conf \
+        CMAKE_C_COMPILER_LAUNCHER=ccache \
+        CMAKE_CXX_COMPILER_LAUNCHER=ccache" >> $GITHUB_ENV
 
     - name: Restore ccache
       if: inputs.use-cache
@@ -89,22 +107,6 @@ jobs:
         key: ccache-${{ inputs.os }}-${{ github.run_id }}
         restore-keys: |
           ccache-${{ inputs.os }}-
-
-    - name: ccache config
-      if: runner.os != 'Linux' && inputs.use-cache
-      run: |
-        ccache --set-config=max_size=1Gi && ccache --set-config=compression=true
-        echo "CMAKE_C_COMPILER_LAUNCHER=ccache" >> $GITHUB_ENV
-        echo "CMAKE_CXX_COMPILER_LAUNCHER=ccache" >> $GITHUB_ENV
-
-    - name: ccache config (Linux)
-      if: runner.os == 'Linux' && inputs.use-cache
-      run: |
-        ccache --set-config=max_size=1Gi && ccache --set-config=compression=true
-        echo "CIBW_ENVIRONMENT=CCACHE_DIR=/host/.cache/ccache \
-        CCACHE_CONFIGPATH=/host/.config/ccache/ccache.conf \
-        CMAKE_C_COMPILER_LAUNCHER=ccache \
-        CMAKE_CXX_COMPILER_LAUNCHER=ccache" >> $GITHUB_ENV
 
     # Build and test wheels
     - uses: actions/checkout@v4

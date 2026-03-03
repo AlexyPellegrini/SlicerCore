@@ -22,14 +22,14 @@ on:
         type: string
       macosx-deployment-target:
         description: 'Used to set the MACOSX_DEPLOYMENT_TARGET env variable. Only used on Mac.'
-        required: false
+        required: true
         default: "11.0"
         type: string
       use-cache:
         description: 'Enable or disable ccache restoration and saving'
         type: boolean
         default: true
-        required: false
+        required: true
       dry-run:
         description: 'Creates a dummy wheel instead of building slicer core'
         type: boolean

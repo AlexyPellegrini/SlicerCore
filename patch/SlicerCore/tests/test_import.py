@@ -4,7 +4,9 @@ This creates a venv and does pip install BasicProject in it, then call a few pyt
 
 from pathlib import Path
 from .venv import VEnv
+import pytest
 
+@pytest.mark.runtime
 def test_import(virtualenv: VEnv, wheelhouse: Path, slicer_core):
     virtualenv.module("pip", "install", "slicer-core",
         "--find-links", wheelhouse.as_posix(), 

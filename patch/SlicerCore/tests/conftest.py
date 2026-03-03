@@ -80,7 +80,7 @@ def slicer_core(buildenv: VEnv, curdir: Path, wheelhouse: Path, request: pytest.
 def slicer_core_sdk(buildenv: VEnv, curdir: Path, wheelhouse: Path, request: pytest.FixtureRequest) -> None:
     wheel_path : Optional[Path] = request.config.getoption("--local-wheels", default=None)
     if wheel_path is None:
-        slicer_core_sdk_src = (curdir.parent.resolve()).as_posix()
+        slicer_core_sdk_src = (curdir.parent.parent.resolve() / "SlicerCoreSDK").as_posix()
         buildenv.module(
             "pip", "wheel", slicer_core_sdk_src,
             "--wheel-dir", wheelhouse.as_posix(),

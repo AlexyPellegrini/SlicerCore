@@ -4,15 +4,15 @@ This creates a venv and does pip install slicer_core_sdk in it, then build anoth
 
 from pathlib import Path
 from .venv import VEnv
+import pytest
 
-def test_build_module(virtualenv: VEnv, curdir: Path, wheelhouse: Path, slicer_core, slicer_core_sdk):
-    test_dir = curdir / "packages" / "build_module"
+@pytest.mark.sdk
+def test_find_package(virtualenv: VEnv, curdir: Path, wheelhouse: Path, slicer_core_sdk):
+    test_src = (curdir / "packages" / "find_package").as_posix()
     virtualenv.module(
-        "pip", "install", test_dir.as_posix(),
+        "pip", "install", test_src,
         "--find-links", wheelhouse.as_posix(),
         "--extra-index-url", "https://vtk.org/files/wheel-sdks",
         "--extra-index-url", "https://wheels.vtk.org",
         "--verbose"
     )
-
-    virtualenv.run("python", (test_dir / "main.py").as_posix())

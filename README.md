@@ -36,7 +36,7 @@ python ./set_vtk_version.py <desired-version>
 
 To build slicer-core wheel:
 ```sh
-python -m pip wheel Slicer --extra-index-url https://vtk.org/files/wheel-sdks
+python -m pip wheel Slicer/SlicerCore --extra-index-url https://vtk.org/files/wheel-sdks
 ```
 
 To build slicer-core-sdk wheel:
@@ -46,7 +46,7 @@ python -m pip wheel Slicer/SlicerCoreSDK --extra-index-url https://vtk.org/files
 
 To run SlicerCoreSDK tests:
 ```sh
-python -m pytest Slicer/SlicerCoreSDK
+python -m pytest Slicer/SlicerCore
 ```
 
 Note that SlicerCoreSDK tests will by default build SlicerCore and SlicerCoreSDK from scratch, and that takes about an hour even on a decent hardware.
@@ -57,10 +57,10 @@ Typical workflow would be:
 # Install build deps
 python -m pip install virtualenv pytest
 # Build the two wheels
-python -m pip wheel Slicer --wheel-dir wheelhouse --extra-index-url https://vtk.org/files/wheel-sdks
+python -m pip wheel Slicer/SlicerCore --wheel-dir wheelhouse --extra-index-url https://vtk.org/files/wheel-sdks
 python -m pip wheel Slicer/SlicerCoreSDK --wheel-dir wheelhouse --extra-index-url https://vtk.org/files/wheel-sdks
 # Test them
-python -m pytest Slicer/SlicerCoreSDK --local-wheels wheelhouse
+python -m pytest Slicer/SlicerCore --local-wheels wheelhouse
 ```
 
 #### Patching the wheels

@@ -74,10 +74,13 @@ jobs:
 
     steps:
     # Install and setup ccache on host
-    - name: ccache config (Windows)
+    - name: Install sccache (Windows)
+      if: ${{ runner.os == 'Windows' && inputs.use-cache && !inputs.dry-run }}
+      uses: mozilla-actions/sccache-action@v0.0.9
+
+    - name: sccache config (Windows)
       if: ${{ runner.os == 'Windows' && inputs.use-cache && !inputs.dry-run }}
       run: |
-        winget install sccache --disable-interactivity --accept-source-agreements
         "SCCACHE_CACHE_SIZE=768M" | Out-File -FilePath $env:GITHUB_ENV -Append
         "CMAKE_C_COMPILER_LAUNCHER=sccache" | Out-File -FilePath $env:GITHUB_ENV -Append
         "CMAKE_CXX_COMPILER_LAUNCHER=sccache" | Out-File -FilePath $env:GITHUB_ENV -Append

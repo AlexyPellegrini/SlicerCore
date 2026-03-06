@@ -1,0 +1,118 @@
+name: build-wheels-windows
+description: Build Slicer Core and Slicer Core SDK for Windows
+
+on:
+  workflow_call:
+    inputs:
+      vtk-tag:
+        description: 'VTK version to use, must match the one in pyproject.toml'
+        required: true
+        type: string
+      python-version:
+        description: 'Python version to build (e.g., 3.10)'
+        required: true
+        type: string
+      use-cache:
+        description: 'Enable or disable build cache restoration and saving'
+        type: boolean
+        default: true
+        required: true
+
+jobs:
+  build-test:
+    runs-on: windows-latest
+    
+    steps:
+    # Install and setup ccache on host
+    - name: Install sccache
+      if: ${{ inputs.use-cache }}
+      uses: mozilla-actions/sccache-action@v0.0.9
+
+    - name: sccache config
+      if: ${{ inputs.use-cache }}
+      run: |
+        "SCCACHE_CACHE_SIZE=768M" | Out-File -FilePath $env:GITHUB_ENV -Append
+        "CMAKE_C_COMPILER_LAUNCHER=sccache" | Out-File -FilePath $env:GITHUB_ENV -Append
+        "CMAKE_CXX_COMPILER_LAUNCHER=sccache" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+    - name: Restore ccache
+      if: ${{ inputs.use-cache }}
+      uses: actions/cache/restore@v4
+      with:
+        path: C:\Users\runneradmin\AppData\Local\Mozilla\sccache\cache
+        key: ccache-${{ runner.os }}-${{ github.run_id }}
+        restore-keys: ccache-${{ runner.os }}-
+
+    # Build and test wheels
+    - uses: actions/checkout@v4
+
+    # Required to use MSVC with Ninja
+    - name: Setup MSVC environment
+      uses: ilammy/msvc-dev-cmd@v1.13.0
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    # Ninja 1.13.0 is broken on Windows https://github.com/ninja-build/ninja/issues/2616,
+    # and 1.13.1 is still not available on PyPi https://github.com/scikit-build/ninja-python-distributions/issues/308
+    - name: Setup python depdencies
+      run: pip install
+        scikit-build-core
+        vtk-sdk-python-wheel-helper
+        cmake
+        ninja==1.11.1.4
+        pytest
+        virtualenv
+        vtk-sdk==${{ inputs.vtk-tag }}
+        --extra-index-url https://vtk.org/files/wheel-sdks
+        vtk==${{ inputs.vtk-tag }}
+        --extra-index-url https://wheels.vtk.org
+
+    - name: Apply patch
+      run: |
+        python apply_patch.py
+        python set_vtk_version.py ${{ inputs.vtk-tag }}
+
+    - name: Build runtime wheel
+      run: python -m pip wheel ./Slicer/SlicerCore --wheel-dir ./wheelhouse --no-build-isolation
+
+    - name: Test runtime wheel
+      run: python -m pytest ./Slicer/SlicerCore --local-wheels=./wheelhouse -m runtime --verbose
+
+    - name: sccache stats (after Runtime build)
+      if: ${{ inputs.use-cache }}
+      run: |
+        sccache -s
+        sccache -z
+
+    - name: Upload wheel artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: slicer_core-${{ runner.os }}_${{ runner.arch }}
+        path: wheelhouse/slicer_core-*.whl
+
+    - name: Build SDK wheel
+      run: python -m pip wheel ./Slicer/SlicerCoreSDK --wheel-dir ./wheelhouse --no-build-isolation
+
+    - name: ccache stats (after SDK build)
+      if: ${{ inputs.use-cache }}
+      run: ccache -s -v
+
+    - name: Upload wheel SDK artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: slicer_core_sdk-${{ runner.os }}_${{ runner.arch }}
+        path: wheelhouse/slicer_core_sdk-*.whl
+
+    - name: Test SlicerCore SDK
+      run: python -m pytest ./Slicer/SlicerCore --local-wheels=./wheelhouse -m sdk --verbose
+
+    - name: Save ccache
+      uses: actions/cache/save@v4
+      # We want the cache to be updated regardless of success, but ONLY if caching is enabled
+      if: ${{ always() && inputs.use-cache }}
+      with:
+        path: C:\Users\runneradmin\AppData\Local\Mozilla\sccache\cache
+        key: ccache-${{ runner.os }}-${{ github.run_id }}

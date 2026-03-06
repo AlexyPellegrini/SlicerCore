@@ -31,7 +31,6 @@ jobs:
       build-target: ${{ matrix.py-abi }}-${{ matrix.build-target }}
       python-version: ${{ matrix.python-version }}
       platform-tag: ${{ matrix.platform-tag }}
-      macosx-deployment-target: "11.0"
       use-cache: true
 
   release-all:
@@ -67,7 +66,6 @@ jobs:
       build-target: ${{ matrix.py-abi }}-${{ matrix.build-target }}
       python-version: ${{ matrix.python-version }}
       platform-tag: ${{ matrix.platform-tag }}
-      macosx-deployment-target: "11.0"
       use-cache: true
 
   upload-github:

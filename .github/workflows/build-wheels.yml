@@ -1,5 +1,5 @@
 name: build-wheels
-description: Build Slicer Core and Slicer Core SDK
+description: Build Slicer Core and Slicer Core SDK for a given platform
 
 on:
   workflow_call:
@@ -24,11 +24,6 @@ on:
         description: 'Wheel platform tag to apply after building. Ignored on Windows.'
         required: true
         type: string
-      macosx-deployment-target:
-        description: 'Used to set the MACOSX_DEPLOYMENT_TARGET env variable. Only used on Mac.'
-        required: true
-        default: "11.0"
-        type: string
       use-cache:
         description: 'Enable or disable ccache restoration and saving'
         type: boolean
@@ -41,188 +36,28 @@ on:
         required: false
 
 jobs:
-  test:
-    runs-on: ${{ inputs.os }}
+  build-windows-latest:
+    if: ${{ inputs.os == 'windows-latest' }}
+    uses: ./.github/workflows/build-wheels-windows.yml
+    with:
+      vtk-tag: ${{ inputs.vtk-tag }}
+      python-version: ${{ inputs.python-version }}
+      use-cache: true
     
-    env:
-      MACOSX_DEPLOYMENT_TARGET: ${{ inputs.macosx-deployment-target }}
-      CIBW_BUILD: ${{ inputs.build-target }}
-      # cibuildwheel creates a docker container for building our wheel
-      # This is all the required steps to use host ccache correctly
-      # Note that this is only needed on linux, as Mac and Windows do not use docker containers
-      CIBW_CONTAINER_ENGINE: "docker; create_args: --volume /home/runner/.cache/ccache:/host/.cache/ccache --volume /home/runner/.config/ccache:/host/.config/ccache --volume /home/runner/test_wheelhouse:/tmp/test_wheelhouse"
-      # Install a compiler cache on each platform
-      CIBW_BEFORE_ALL_LINUX: "yum install -y ccache mesa-libGL-devel glx-utils freeglut-devel && ccache --show-config && ccache -z"
-      CIBW_BEFORE_ALL_MACOS: "ccache --show-config && ccache -z"
-      CIBW_BEFORE_ALL_WINDOWS: "sccache -z && mkdir %TEMP%\\test_wheelhouse && copy .\\README.md %TEMP%\\test_wheelhouse"
-      # Use no build isolation so ccache can hit correctly since vtk-sdk will always be in the same logical directory
-      CIBW_BUILD_FRONTEND: "pip; args: --no-build-isolation"
-      # And as we use --no-build-isolation, let's install the dependencies manually
-      CIBW_BEFORE_BUILD: "pip install scikit-build-core vtk-sdk-python-wheel-helper cmake ninja
-        vtk-sdk==${{ inputs.vtk-tag }}
-        --extra-index-url https://vtk.org/files/wheel-sdks
-        vtk==${{ inputs.vtk-tag }}
-        --extra-index-url https://wheels.vtk.org
-
-        rm -fr ./Slicer/wheelbuild"
-      # Ninja 1.13.0 is broken on Windows https://github.com/ninja-build/ninja/issues/2616,
-      # and 1.13.1 is still not available on PyPi https://github.com/scikit-build/ninja-python-distributions/issues/308
-      CIBW_BEFORE_BUILD_WINDOWS: "pip install scikit-build-core vtk-sdk-python-wheel-helper cmake ninja==1.11.1.4
-        vtk-sdk==${{ inputs.vtk-tag }}
-        --extra-index-url https://vtk.org/files/wheel-sdks
-        vtk==${{ inputs.vtk-tag }}
-        --extra-index-url https://wheels.vtk.org
-
-        if (Test-Path -Path ./Slicer/wheelbuild) { rm -r ./Slicer/wheelbuild }"
-      # Global test setup
-      CIBW_TEST_REQUIRES: "pytest virtualenv"
-      # Do not repair, everything is already put just as needed to make it work
-      # SlicerCore uses extensive CMake logic to package everything as needed, do not try this at home!
-      CIBW_REPAIR_WHEEL_COMMAND: "
-        python -m pip install wheel &&
-        python -m wheel tags --platform-tag ${{ inputs.platform-tag }} --remove {wheel} &&
-        cp $(dirname {wheel})/slicer_core*.whl {dest_dir} &&
-        mkdir -p /tmp/test_wheelhouse &&
-        cp $(dirname {wheel})/slicer_core*.whl /tmp/test_wheelhouse"
-      CIBW_REPAIR_WHEEL_COMMAND_WINDOWS: "cp {wheel} {dest_dir} && mkdir %TEMP%\\test_wheelhouse && copy {wheel} %TEMP%\\test_wheelhouse"
-
-    steps:
-    # Install and setup ccache on host
-    - name: Install sccache (Windows)
-      if: ${{ runner.os == 'Windows' && inputs.use-cache && !inputs.dry-run }}
-      uses: mozilla-actions/sccache-action@v0.0.9
-
-    - name: sccache config (Windows)
-      if: ${{ runner.os == 'Windows' && inputs.use-cache && !inputs.dry-run }}
-      run: |
-        "SCCACHE_CACHE_SIZE=768M" | Out-File -FilePath $env:GITHUB_ENV -Append
-        "CMAKE_C_COMPILER_LAUNCHER=sccache" | Out-File -FilePath $env:GITHUB_ENV -Append
-        "CMAKE_CXX_COMPILER_LAUNCHER=sccache" | Out-File -FilePath $env:GITHUB_ENV -Append
-
-    - name: ccache config (Mac)
-      if: ${{ runner.os == 'macOS' && inputs.use-cache && !inputs.dry-run }}
-      run: |
-        brew install ccache
-        ccache --set-config=max_size=768Mi && ccache --set-config=compression=true
-        echo "CMAKE_C_COMPILER_LAUNCHER=ccache" >> $GITHUB_ENV
-        echo "CMAKE_CXX_COMPILER_LAUNCHER=ccache" >> $GITHUB_ENV
-
-    - name: ccache config (Linux)
-      if: ${{ runner.os == 'Linux' && inputs.use-cache && !inputs.dry-run }}
-      run: |
-        sudo apt-get update && sudo apt-get install -y ccache
-        ccache --set-config=max_size=512Mi && ccache --set-config=compression=true
-        echo "CIBW_ENVIRONMENT=CCACHE_DIR=/host/.cache/ccache \
-        CCACHE_CONFIGPATH=/host/.config/ccache/ccache.conf \
-        CMAKE_C_COMPILER_LAUNCHER=ccache \
-        CMAKE_CXX_COMPILER_LAUNCHER=ccache" >> $GITHUB_ENV
-
-    - name: Restore ccache
-      if: ${{ inputs.use-cache && !inputs.dry-run }}
-      uses: actions/cache/restore@v4
-      with:
-        path: |
-          ~/.cache/ccache
-          ~/Library/Caches/ccache
-          C:\Users\runneradmin\AppData\Local\Mozilla\sccache\cache
-        key: ccache-${{ inputs.os }}-${{ github.run_id }}
-        restore-keys: |
-          ccache-${{ inputs.os }}-
-
-    # Build and test wheels
-    - uses: actions/checkout@v4
-
-    # This python is used to patch the project, not to build!
-    - name: Set up Python
-      if: ${{ !inputs.dry-run }}
-      uses: actions/setup-python@v5
-      with:
-        python-version: ${{ inputs.python-version }}
-
-    - name: Apply patch
-      if: ${{ !inputs.dry-run }}
-      run: python apply_patch.py && python set_vtk_version.py ${{ inputs.vtk-tag }}
-
-    # Use MSVC with Ninja on Windows
-    - uses: ilammy/msvc-dev-cmd@v1.13.0
-      if: ${{ !inputs.dry-run }}
-
-    - name: Build wheel
-      if: ${{ !inputs.dry-run }}
-      uses: pypa/cibuildwheel@v3.3.1
-      env:
-        CIBW_TEST_COMMAND: "python -m pytest {project}/Slicer/SlicerCore --local-wheels=/tmp/test_wheelhouse -m runtime --verbose"
-        CIBW_TEST_COMMAND_WINDOWS: "python -m pytest {project}/Slicer/SlicerCore --local-wheels=$env:TEMP/test_wheelhouse -m runtime --verbose"
-      with:
-        package-dir: Slicer/SlicerCore
-        output-dir: wheelhouse
-
-    - name: Dry-run create wheels
-      if: ${{ inputs.dry-run && runner.os != 'Windows' }}
-      run: |
-        mkdir wheelhouse
-        zip wheelhouse/slicer_core-0.0.1-${{ inputs.platform-tag }}.whl README.md
-        zip wheelhouse/slicer_core_sdk-0.0.1-${{ inputs.platform-tag }}.whl README.md
-
-    - name: Dry-run create wheels
-      if: ${{ inputs.dry-run && runner.os == 'Windows' }}
-      run: |
-        mkdir wheelhouse
-        Compress-Archive -Path README.md -DestinationPath wheelhouse/slicer_core-0.0.1-${{ inputs.platform-tag }}.whl
-        Compress-Archive -Path README.md -DestinationPath wheelhouse/slicer_core_sdk-0.0.1-${{ inputs.platform-tag }}.whl
-
-    - name: ccache stats (after Runtime build)
-      if: ${{ inputs.use-cache && !inputs.dry-run }}
-      run: ccache -s -v
-
-    - name: Upload wheel artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: slicer_core-${{ inputs.build-target }}
-        path: wheelhouse/slicer_core-*.whl
-
-    - name: Build wheel SDK
-      if: ${{ !inputs.dry-run }}
-      uses: pypa/cibuildwheel@v3.3.1
-      env:
-        CIBW_TEST_COMMAND: "python -m pytest {project}/Slicer/SlicerCore --local-wheels=/tmp/test_wheelhouse -m sdk --verbose"
-        CIBW_TEST_COMMAND_WINDOWS: "python -m pytest {project}/Slicer/SlicerCore --local-wheels=$env:TEMP/test_wheelhouse -m sdk --verbose"
-      with:
-        package-dir: Slicer/SlicerCoreSDK
-        output-dir: wheelhouse
-
-    - name: ccache stats (after SDK build)
-      if: ${{ inputs.use-cache && !inputs.dry-run }}
-      run: ccache -s -v
-
-    - name: Upload wheel SDK artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: slicer_core_sdk-${{ inputs.build-target }}
-        path: wheelhouse/slicer_core_sdk-*.whl
-
-    - name: Save ccache
-      uses: actions/cache/save@v4
-      # We want the cache to be updated regardless of success, but ONLY if caching is enabled
-      if: ${{ always() && inputs.use-cache && !inputs.dry-run }}
-      with:
-        path: |
-          ~/.cache/ccache
-          ~/Library/Caches/ccache
-          C:\Users\runneradmin\AppData\Local\Mozilla\sccache\cache
-        key: ccache-${{ inputs.os }}-${{ github.run_id }}
-
-    - name: Upload wheel test artifact on failure
-      if: failure() && runner.os != 'Windows'
-      uses: actions/upload-artifact@v4
-      with:
-        name: slicer_core-failure-${{ inputs.build-target }}
-        path:
-          /tmp/test_wheelhouse/*
-
-    - name: Upload wheel test artifact on failure (Windows)
-      if: failure() && runner.os == 'Windows'
-      uses: actions/upload-artifact@v4
-      with:
-        name: slicer_core-failure-${{ inputs.build-target }}
-        path: $env:TEMP/test_wheelhouse/*
+  build-ubuntu-latest:
+    if: ${{ inputs.os == 'ubuntu-latest' }}
+    uses: ./.github/workflows/build-wheels-linux.yml
+    with:
+      vtk-tag: ${{ inputs.vtk-tag }}
+      build-target: ${{ inputs.build-target }}
+      python-version: ${{ inputs.python-version }}
+      platform-tag: ${{ inputs.platform-tag }}
+      use-cache: true
+  
+  build-macos-15:
+    if: ${{ inputs.os == 'macos-15' }}
+    uses: ./.github/workflows/build-wheels-mac.yml
+    with:
+      vtk-tag: ${{ inputs.vtk-tag }}
+      python-version: ${{ inputs.python-version }}
+      use-cache: true
